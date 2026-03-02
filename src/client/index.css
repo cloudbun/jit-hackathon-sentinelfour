@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@keyframes blink-status {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.status-blink {
+  animation: blink-status 2s infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: rgba(239, 68, 68, 0.4); }
+  50% { border-color: rgba(239, 68, 68, 0.8); }
+}
+
+.border-pulse-red {
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+@keyframes pulse-border-amber {
+  0%, 100% { border-color: rgba(234, 179, 8, 0.3); }
+  50% { border-color: rgba(234, 179, 8, 0.7); }
+}
+
+.border-pulse-amber {
+  animation: pulse-border-amber 2s ease-in-out infinite;
+}
+
+/* Unified ticket aesthetic base */
+.ticket-mono {
+  font-family: 'Space Mono', 'Courier New', Courier, monospace;
+}
