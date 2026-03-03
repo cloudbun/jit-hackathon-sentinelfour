@@ -2,7 +2,9 @@ System requirements:
 
 # SentinelFour
 
-Security monitoring and asset management dashboard. Provides centralized visibility into security agents, software inventory, and threat intelligence feeds.
+## Executive Summary
+
+SentinelFour is a lightweight, self-hosted security operations dashboard built for small-to-mid-size infrastructure teams. It consolidates three core workflows into a single pane of glass: real-time agent monitoring across servers, workstations, and firewalls; software inventory tracking with automatic vulnerability and outdated-version flagging; and threat intelligence feed aggregation from RSS/Atom sources with keyword-based severity tagging. The platform integrates with automation tools like n8n via webhook, enabling teams to keep their asset inventory up to date without manual entry. Built on Bun, Elysia, React, and SQLite, it is designed to be fast to deploy (single binary + embedded database), easy to extend, and opinionated toward operational simplicity over enterprise complexity.
 
 ## Tech Stack
 

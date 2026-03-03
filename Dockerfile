@@ -14,8 +14,6 @@ RUN bun run build
 # Production image
 FROM base AS runtime
 COPY --from=build /app/dist dist
-COPY --from=build /app/node_modules node_modules
-COPY --from=build /app/package.json .
 
 # Include seed script for optional data initialization
 # Usage: docker exec <container> bun run src/seed-applications.ts

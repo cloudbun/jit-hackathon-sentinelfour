@@ -1,18 +1,17 @@
 import { Elysia } from "elysia";
-import { staticPlugin } from "@elysiajs/static";
 import { api } from "./api";
 import { db } from "./db";
 import { startFeedScheduler } from "./lib/feed-scheduler";
+import path from "path";
+
+const clientDir = path.resolve("dist/client");
+const indexHtml = path.join(clientDir, "index.html");
 
 const app = new Elysia()
   .use(api)
-  .use(
-    staticPlugin({
-      assets: "dist/client",
-      prefix: "/",
-    })
-  )
-  .get("/*", () => Bun.file("dist/client/index.html"))
+  .get("/assets/*", ({ params }) => Bun.file(path.join(clientDir, "assets", params["*"])))
+  .get("/", () => Bun.file(indexHtml))
+  .get("/*", () => Bun.file(indexHtml))
   .listen(3000);
 
 startFeedScheduler();
