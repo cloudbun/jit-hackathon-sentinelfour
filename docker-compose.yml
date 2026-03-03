@@ -1,0 +1,18 @@
+services:
+  sentinelfour:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - sentinelfour-data:/app/data
+
+  n8n:
+    image: n8nio/n8n
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+
+volumes:
+  sentinelfour-data:
+  n8n-data:

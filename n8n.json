@@ -1,0 +1,375 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -688,
+        -176
+      ],
+      "id": "90e85f02-5c69-4fde-9764-eb0ab8ce9823",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Summarize each the following RSS advisories into a concise security brief that contains the severity/risk, the impacted systems, link for more information and the remediation steps.\n\nKeep under 100 words for each.\n\n{{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -48,
+        -288
+      ],
+      "id": "ed3e66f5-d61b-4314-95ff-a96620aa5790",
+      "name": "Message a model",
+      "executeOnce": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "pryJ2kpKvdbmKd9A",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -416,
+        -224
+      ],
+      "id": "90f7df40-f446-4b2d-b0eb-d4160f00561c",
+      "name": "CISA Feed"
+    },
+    {
+      "parameters": {
+        "url": "https://aws.amazon.com/security/security-bulletins/rss/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -416,
+        -352
+      ],
+      "id": "da9bba88-34a0-45e2-ae54-a245e7ee6507",
+      "name": "AWS Feed",
+      "alwaysOutputData": true,
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -416,
+        -96
+      ],
+      "id": "e6c92f89-0533-4efa-8f9f-a568d5facdde",
+      "name": "Cisco Feed"
+    },
+    {
+      "parameters": {
+        "url": "https://security.paloaltonetworks.com/rss.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -416,
+        32
+      ],
+      "id": "27e46e4f-8f02-419d-80fb-65988753e5c9",
+      "name": "Palo Alto Feed"
+    },
+    {
+      "parameters": {
+        "jsCode": "const merged = $input.all().map(item => item.json);\n\nreturn [\n  {\n    json: {\n      advisories: merged\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        -352
+      ],
+      "id": "0cde98fc-3ac3-46eb-9d85-d385bdc3e700",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "const merged = $input\n  .all()\n  .slice(0, 3)\n  .map(item => item.json);\n\nreturn [\n  {\n    json: {\n      advisories: merged\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        -224
+      ],
+      "id": "5009e1a9-b74d-4bad-b526-a75e52c6cf2d",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const merged = $input.all().map(item => item.json);\n\nreturn [\n  {\n    json: {\n      advisories: merged\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        -112
+      ],
+      "id": "99621d0e-49de-459b-b5fc-b5cea6b6f872",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.link }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -256,
+        32
+      ],
+      "id": "c49970e0-832c-411c-b617-d63526c7a342",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Summarize each the following advisories into a concise security brief that contains the severity/risk, the impacted systems, link for more information and the remediation steps.\n\nKeep under 100 words for each.\n\n{{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -48,
+        -96
+      ],
+      "id": "9936e1e6-cf6b-4508-b8bb-9c9251916ecb",
+      "name": "Message a model1",
+      "executeOnce": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "pryJ2kpKvdbmKd9A",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://sentinelfour:3000/api/webhook/n8n",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.output[0].content[0].text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        336,
+        -208
+      ],
+      "id": "a5d353d4-ad70-403b-9b55-30a175df3c68",
+      "name": "HTTP Request1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "AWS Feed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "CISA Feed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Cisco Feed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Palo Alto Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CISA Feed": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AWS Feed": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cisco Feed": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Palo Alto Feed": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Message a model1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "8d4b7ed0-46bf-4f66-9576-55fa503bf50a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b03b90610bcb3eeedd69066e4eba2b63715901c8766806fc3fc8c7505b8c099f"
+  },
+  "id": "De5kjf3kwRxEFfHk",
+  "tags": []
+}

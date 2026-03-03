@@ -8,9 +8,16 @@ async function refreshAllFeeds() {
   for (const feed of feeds) {
     try {
       const items = await parseFeed(feed.url);
-      const stmt = db.prepare(
-        "INSERT OR IGNORE INTO feed_items (feed_id, title, link, description, pub_date, guid, severity) VALUES (?, ?, ?, ?, ?, ?, ?)"
-      );
+      const stmt = db.prepare(`
+        INSERT INTO feed_items (feed_id, title, link, description, pub_date, guid, severity)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(feed_id, guid) DO UPDATE SET
+          title = excluded.title,
+          link = excluded.link,
+          description = excluded.description,
+          pub_date = excluded.pub_date,
+          severity = excluded.severity
+      `);
       for (const item of items) {
         const severity = autoTagSeverity(item.title, item.description);
         stmt.run(feed.id, item.title, item.link, item.description, item.pubDate, item.guid, severity);

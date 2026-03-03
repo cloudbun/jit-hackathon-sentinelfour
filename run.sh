@@ -17,8 +17,8 @@ RESET='\033[0m'
 banner() {
   echo ""
   echo -e "${BOLD}${CYAN}  ┌─────────────────────────────────┐${RESET}"
-  echo -e "${BOLD}${CYAN}  │         SENTINEL${RED}FOUR${CYAN}             │${RESET}"
-  echo -e "${BOLD}${CYAN}  │     ${DIM}security monitoring${RESET}${BOLD}${CYAN}         │${RESET}"
+  echo -e "${BOLD}${CYAN}  │          SENTINEL${RED}FOUR${CYAN}           │${RESET}"
+  echo -e "${BOLD}${CYAN}  │       ${DIM}security monitoring${RESET}${BOLD}${CYAN}       │${RESET}"
   echo -e "${BOLD}${CYAN}  └─────────────────────────────────┘${RESET}"
   echo ""
 }
@@ -34,12 +34,14 @@ usage() {
   echo -e "  ${BOLD}Usage:${RESET} ./run.sh ${DIM}[command]${RESET}"
   echo ""
   echo -e "  ${BOLD}Commands:${RESET}"
-  echo -e "    ${CYAN}build${RESET}       Build the Docker image"
-  echo -e "    ${CYAN}start${RESET}       Build and start the container"
-  echo -e "    ${CYAN}stop${RESET}        Stop and remove the container"
-  echo -e "    ${CYAN}seed${RESET}        Seed the database with sample data"
-  echo -e "    ${CYAN}logs${RESET}        Tail container logs"
-  echo -e "    ${CYAN}restart${RESET}     Stop, rebuild, and start"
+  echo -e "    ${CYAN}build${RESET}          Build the Docker image"
+  echo -e "    ${CYAN}start${RESET}          Build and start the container"
+  echo -e "    ${CYAN}stop${RESET}           Stop and remove the container"
+  echo -e "    ${CYAN}seed${RESET}           Seed the database with sample data"
+  echo -e "    ${CYAN}logs${RESET}           Tail container logs"
+  echo -e "    ${CYAN}restart${RESET}        Stop, rebuild, and start"
+  echo -e "    ${CYAN}compose${RESET}        Start with Docker Compose (includes n8n)"
+  echo -e "    ${CYAN}compose-down${RESET}   Stop Docker Compose stack"
   echo ""
   echo -e "  ${BOLD}Environment:${RESET}"
   echo -e "    ${DIM}PORT${RESET}        Host port (default: 3000)"
@@ -118,6 +120,40 @@ logs() {
   docker logs -f "$CONTAINER"
 }
 
+compose() {
+  banner
+  info "Starting stack with Docker Compose..."
+  docker compose up --build -d 2>&1 | while IFS= read -r line; do
+    echo -e "    ${DIM}${line}${RESET}"
+  done
+
+  # Wait for server, then seed
+  step "Waiting for server..."
+  for i in $(seq 1 15); do
+    if docker compose exec sentinelfour bun -e "await fetch('http://localhost:3000/api/dashboard/summary')" 2>/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+
+  step "Seeding database..."
+  docker compose exec sentinelfour bun run src/seed-applications.ts > /dev/null 2>&1
+
+  success "Ready."
+  echo ""
+  echo -e "  ${GREEN}→${RESET} Dashboard: ${BOLD}http://localhost:3000${RESET}"
+  echo -e "  ${GREEN}→${RESET} n8n:       ${BOLD}http://localhost:5678${RESET}"
+  echo ""
+}
+
+compose_down() {
+  banner
+  info "Stopping Docker Compose stack..."
+  docker compose down
+  success "Stopped."
+  echo ""
+}
+
 case "${1:-start}" in
   build)   build ;;
   start)   start ;;
@@ -125,6 +161,8 @@ case "${1:-start}" in
   seed)    seed ;;
   logs)    logs ;;
   restart) stop; start ;;
+  compose) compose ;;
+  compose-down) compose_down ;;
   help|-h|--help) usage ;;
   *)
     error "Unknown command: ${BOLD}$1${RESET}"

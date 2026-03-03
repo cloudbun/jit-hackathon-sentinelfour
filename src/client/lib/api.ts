@@ -1,4 +1,4 @@
-import type { Agent, AgentWithEvents, Application, ApplicationSummary, DashboardSummary, Feed, FeedItem } from "./types";
+import type { Agent, AgentWithEvents, Application, ApplicationSummary, DashboardSummary, Feed, FeedItem, ServerHealth } from "./types";
 
 const BASE = "/api";
 
@@ -74,9 +74,16 @@ export const createApplication = (data: {
 }) =>
   request<Application>("/applications", { method: "POST", body: JSON.stringify(data) });
 
+export const updateApplication = (id: number, data: { version?: string; status?: string; advisory_markdown?: string }) =>
+  request<Application>(`/applications/${id}`, { method: "PUT", body: JSON.stringify(data) });
+
 export const deleteApplication = (id: number) =>
   request<{ ok: boolean }>(`/applications/${id}`, { method: "DELETE" });
 
 // Dashboard
 export const getDashboardSummary = () =>
   request<DashboardSummary>("/dashboard/summary");
+
+// Server
+export const getServerHealth = () =>
+  request<ServerHealth>("/server/health");

@@ -100,6 +100,36 @@ export const applicationsApi = new Elysia({ prefix: "/applications" })
     }),
   })
 
+  .put("/:id", ({ params: { id }, body }) => {
+    const existing = db.query("SELECT * FROM applications WHERE id = ?").get(id);
+    if (!existing) return new Response("Not found", { status: 404 });
+    const fields: string[] = [];
+    const values: any[] = [];
+    for (const [key, val] of Object.entries(body)) {
+      if (val !== undefined) {
+        fields.push(`${key} = ?`);
+        values.push(val);
+      }
+    }
+    if (fields.length === 0) return existing;
+    values.push(id);
+    const updated = db.prepare(`UPDATE applications SET ${fields.join(", ")} WHERE id = ? RETURNING *`).get(...values);
+    const agent = db.query("SELECT hostname FROM agents WHERE id = ?").get((existing as any).agent_id) as { hostname: string } | null;
+    return { ...(updated as any), agent_hostname: agent?.hostname ?? "" };
+  }, {
+    body: t.Object({
+      version: t.Optional(t.String()),
+      vendor: t.Optional(t.String()),
+      category: t.Optional(t.Union([
+        t.Literal("database"), t.Literal("web-server"), t.Literal("runtime"), t.Literal("security"), t.Literal("other"),
+      ])),
+      status: t.Optional(t.Union([
+        t.Literal("running"), t.Literal("stopped"), t.Literal("vulnerable"), t.Literal("outdated"),
+      ])),
+      advisory_markdown: t.Optional(t.String()),
+    }),
+  })
+
   .delete("/:id", ({ params: { id } }) => {
     db.prepare("DELETE FROM applications WHERE id = ?").run(id);
     return { ok: true };

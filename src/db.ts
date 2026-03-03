@@ -9,7 +9,7 @@ db.exec("PRAGMA foreign_keys = ON;");
 db.exec(`
   CREATE TABLE IF NOT EXISTS agents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    hostname TEXT NOT NULL,
+    hostname TEXT NOT NULL UNIQUE,
     ip_address TEXT NOT NULL,
     os TEXT NOT NULL DEFAULT '',
     agent_type TEXT NOT NULL CHECK(agent_type IN ('server', 'workstation', 'firewall')) DEFAULT 'server',
@@ -65,6 +65,29 @@ try {
   // Column already exists — ignore
 }
 
+// Migration: deduplicate agents (keep lowest id per hostname, reassign references)
+try {
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_hostname ON agents(hostname)");
+} catch {
+  // Duplicates exist — clean them up
+  const dupes = db.query(`
+    SELECT hostname, MIN(id) as keep_id
+    FROM agents GROUP BY hostname HAVING COUNT(*) > 1
+  `).all() as { hostname: string; keep_id: number }[];
+
+  for (const { hostname, keep_id } of dupes) {
+    const dupIds = db.query(
+      "SELECT id FROM agents WHERE hostname = ? AND id != ?"
+    ).all(hostname, keep_id) as { id: number }[];
+    for (const { id } of dupIds) {
+      db.exec(`UPDATE agent_events SET agent_id = ${keep_id} WHERE agent_id = ${id}`);
+      db.exec(`UPDATE applications SET agent_id = ${keep_id} WHERE agent_id = ${id}`);
+      db.exec(`DELETE FROM agents WHERE id = ${id}`);
+    }
+  }
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_hostname ON agents(hostname)");
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS feeds (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,7 +123,7 @@ if (feedCount.count === 0) {
     ["CISA Advisories",            "https://www.cisa.gov/cybersecurity-advisories/all.xml"],
     ["CISA ICS Advisories",        "https://www.cisa.gov/cybersecurity-advisories/ics-advisories.xml"],
     ["AWS Security Bulletins",     "https://aws.amazon.com/security/security-bulletins/rss/feed/"],
-    ["Cisco Security Advisories",  "https://sec.cloudapps.cisco.com/security/center/xmlContent.do?url=/document/blobs/rss/latest_security_advisories.xml"],
+    ["Cisco Security Advisories",  "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml"],
     ["Palo Alto Security Advisories", "https://security.paloaltonetworks.com/rss.xml"],
   ];
 

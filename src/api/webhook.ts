@@ -1,5 +1,7 @@
 import { Elysia, t } from "elysia";
 import { db } from "../db";
+import { recordWebhookUpload } from "../lib/server-metrics";
+import { autoTagSeverity } from "../lib/feed-parser";
 
 const validCategories = ["database", "web-server", "runtime", "security", "other"];
 const validStatuses = ["running", "stopped", "vulnerable", "outdated"];
@@ -27,6 +29,26 @@ function resolveAgentId(hostname: string): number {
 
   const created = db.query("SELECT id FROM agents WHERE hostname = ?").get(hostname) as { id: number };
   return created.id;
+}
+
+const N8N_FEED_NAME = "n8n Advisories";
+const N8N_FEED_URL = "webhook://n8n";
+
+function getOrCreateWebhookFeed(): number {
+  const existing = db.query("SELECT id FROM feeds WHERE url = ?").get(N8N_FEED_URL) as { id: number } | null;
+  if (existing) return existing.id;
+  const row = db.prepare(
+    "INSERT INTO feeds (name, url, enabled) VALUES (?, ?, 0) RETURNING id"
+  ).get(N8N_FEED_NAME, N8N_FEED_URL) as { id: number };
+  return row.id;
+}
+
+function insertFeedItem(feedId: number, title: string, description: string) {
+  const guid = `n8n-${Date.now()}-${title.slice(0, 40).replace(/\W+/g, "-")}`;
+  const severity = autoTagSeverity(title, description);
+  db.prepare(
+    "INSERT OR IGNORE INTO feed_items (feed_id, title, link, description, pub_date, guid, severity) VALUES (?, ?, ?, ?, datetime('now'), ?, ?)"
+  ).run(feedId, title, "", description.slice(0, 500), guid, severity);
 }
 
 interface N8nApplication {
@@ -94,6 +116,8 @@ function applyBulkAdvisory(text: string): { matched: number; unmatched: number; 
   const matched: { name: string; id: number }[] = [];
   const matchedIds = new Set<number>();
 
+  const feedId = getOrCreateWebhookFeed();
+
   for (const app of apps) {
     // Collect all sections that mention this app name
     const appNameLower = app.name.toLowerCase();
@@ -108,6 +132,12 @@ function applyBulkAdvisory(text: string): { matched: number; unmatched: number; 
       ).run(advisory, app.id);
       matched.push({ name: app.name, id: app.id });
       matchedIds.add(app.id);
+
+      // Add each section as a feed item
+      for (const section of relevantSections) {
+        const firstLine = section.trim().split("\n")[0].replace(/^#+\s*/, "");
+        insertFeedItem(feedId, `${app.name}: ${firstLine}`, section.trim());
+      }
     }
   }
 
@@ -127,6 +157,13 @@ export const webhookApi = new Elysia({ prefix: "/webhook" })
     const bulkText = payload?.body?.text ?? payload?.text;
     if (bulkText && typeof bulkText === "string" && !payload.name) {
       const result = applyBulkAdvisory(bulkText);
+      recordWebhookUpload({
+        mode: "bulk_advisory",
+        created: 0,
+        updated: 0,
+        matched: result.matched,
+        errors: result.unmatched,
+      });
       return {
         mode: "bulk_advisory",
         ...result,
@@ -150,10 +187,21 @@ export const webhookApi = new Elysia({ prefix: "/webhook" })
       }
     }
 
+    const created = results.filter((r) => r.action === "created").length;
+    const updated = results.filter((r) => r.action === "updated").length;
+
+    recordWebhookUpload({
+      mode: "upsert",
+      created,
+      updated,
+      matched: 0,
+      errors: errors.length,
+    });
+
     return {
       received: items.length,
-      created: results.filter((r) => r.action === "created").length,
-      updated: results.filter((r) => r.action === "updated").length,
+      created,
+      updated,
       errors: errors.length,
       results,
       ...(errors.length > 0 ? { error_details: errors } : {}),

@@ -94,4 +94,41 @@ export interface ApplicationSummary {
   by_category: Record<ApplicationCategory, number>;
 }
 
+export interface WebhookUpload {
+  timestamp: string;
+  mode: "bulk_advisory" | "upsert";
+  created: number;
+  updated: number;
+  matched: number;
+  errors: number;
+}
+
+export interface ServerHealth {
+  status: "healthy";
+  uptime_seconds: number;
+  started_at: string;
+  memory: {
+    rss_mb: number;
+    heap_used_mb: number;
+    heap_total_mb: number;
+  };
+  requests: {
+    total: number;
+    errors: number;
+    error_rate: number;
+  };
+  response_times: {
+    avg_ms: number;
+    p95_ms: number;
+    p99_ms: number;
+    samples: number;
+  };
+  runtime: {
+    version: string;
+    platform: string;
+    pid: number;
+  };
+  webhook_uploads: WebhookUpload[];
+}
+
 export type Page = "dashboard" | "agents" | "feeds";

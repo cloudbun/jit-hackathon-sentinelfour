@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { getDashboardSummary, getAgents, getFeeds, getFeedItems, deleteAgent, refreshFeed, deleteFeed, refreshAllFeeds } from "./lib/api";
+import { getDashboardSummary, getAgents, getFeeds, getFeedItems, deleteAgent, refreshFeed, deleteFeed, refreshAllFeeds, getServerHealth } from "./lib/api";
 import { useApi } from "./hooks/useApi";
 import { usePolling } from "./hooks/usePolling";
 import { StatsGrid } from "./components/dashboard/StatsGrid";
@@ -8,6 +8,7 @@ import { AgentCard } from "./components/agents/AgentCard";
 import { AgentDetailModal } from "./components/agents/AgentDetailModal";
 import { AddAgentForm } from "./components/agents/AddAgentForm";
 import { FeedItemsList } from "./components/feeds/FeedItemsList";
+import { ServerMonitor } from "./components/dashboard/ServerMonitor";
 import { AddFeedForm } from "./components/feeds/AddFeedForm";
 import { Card, CardHeader, CardBody } from "./components/shared/Card";
 import { EmptyState } from "./components/shared/EmptyState";
@@ -21,6 +22,7 @@ export function App() {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [severityFilter, setSeverityFilter] = useState("");
 
+  const serverHealth = useApi(() => getServerHealth(), []);
   const summary = useApi(() => getDashboardSummary(), []);
   const agents = useApi(() => getAgents(), []);
   const feeds = useApi(() => getFeeds(), []);
@@ -30,11 +32,12 @@ export function App() {
   );
 
   const refetchAll = useCallback(() => {
+    serverHealth.refetch();
     summary.refetch();
     agents.refetch();
     feeds.refetch();
     feedItems.refetch();
-  }, [summary.refetch, agents.refetch, feeds.refetch, feedItems.refetch]);
+  }, [serverHealth.refetch, summary.refetch, agents.refetch, feeds.refetch, feedItems.refetch]);
 
   usePolling(refetchAll);
 
@@ -146,8 +149,16 @@ export function App() {
             <RecentEventsPanel events={summary.data?.recentEvents ?? []} className="flex-1" />
           </div>
 
-          {/* Row 3: Feeds config (4 cols) + Threat Intel (8 cols) */}
-          <div className="col-span-4 flex">
+          {/* Row 3: API Server (3 cols) + Feeds config (3 cols) + Threat Intel (6 cols) */}
+          <div className="col-span-3 flex">
+            <Card className="flex-1 flex flex-col">
+              <CardHeader>API Server</CardHeader>
+              <CardBody className="p-0 flex-1 overflow-y-auto">
+                <ServerMonitor health={serverHealth.data ?? null} />
+              </CardBody>
+            </Card>
+          </div>
+          <div className="col-span-3 flex">
             <Card className="flex-1 flex flex-col">
               <CardHeader
                 action={
@@ -204,7 +215,7 @@ export function App() {
               </CardBody>
             </Card>
           </div>
-          <div className="col-span-8 flex">
+          <div className="col-span-6 flex">
             <div className="flex-1">
               <FeedItemsList
                 items={feedItems.data ?? []}
