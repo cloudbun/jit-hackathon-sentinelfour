@@ -1,0 +1,161 @@
+import { Elysia, t } from "elysia";
+import { db } from "../db";
+
+const validCategories = ["database", "web-server", "runtime", "security", "other"];
+const validStatuses = ["running", "stopped", "vulnerable", "outdated"];
+
+function normalizeCategory(cat: string | undefined): string {
+  if (!cat) return "other";
+  const lower = cat.toLowerCase().trim();
+  return validCategories.includes(lower) ? lower : "other";
+}
+
+function normalizeStatus(status: string | undefined): string {
+  if (!status) return "running";
+  const lower = status.toLowerCase().trim();
+  return validStatuses.includes(lower) ? lower : "running";
+}
+
+function resolveAgentId(hostname: string): number {
+  const existing = db.query("SELECT id FROM agents WHERE hostname = ?").get(hostname) as { id: number } | null;
+  if (existing) return existing.id;
+
+  // Auto-create the agent if it doesn't exist
+  db.prepare(
+    "INSERT INTO agents (hostname, ip_address, os, agent_type, status, threat_level) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(hostname, "0.0.0.0", "", "server", "online", "none");
+
+  const created = db.query("SELECT id FROM agents WHERE hostname = ?").get(hostname) as { id: number };
+  return created.id;
+}
+
+interface N8nApplication {
+  hostname?: string;
+  agent?: string;
+  agent_id?: number;
+  name: string;
+  version?: string;
+  vendor?: string;
+  category?: string;
+  status?: string;
+  advisory_markdown?: string;
+  body?: { text?: string };
+  text?: string;
+}
+
+function upsertApplication(app: N8nApplication): { id: number; name: string; action: string } {
+  // Resolve agent: prefer hostname/agent field, fall back to agent_id
+  let agentId: number;
+  const host = app.hostname ?? app.agent;
+  if (host) {
+    agentId = resolveAgentId(host);
+  } else if (app.agent_id) {
+    agentId = app.agent_id;
+  } else {
+    throw new Error("Each application must include 'hostname', 'agent', or 'agent_id'");
+  }
+
+  const category = normalizeCategory(app.category);
+  const status = normalizeStatus(app.status);
+  const version = app.version ?? "";
+  const vendor = app.vendor ?? "";
+  const advisoryMarkdown = app.advisory_markdown ?? app.body?.text ?? app.text ?? "";
+
+  // Upsert: update if same agent+name+version exists, otherwise insert
+  const existing = db.query(
+    "SELECT id FROM applications WHERE agent_id = ? AND name = ? AND version = ?"
+  ).get(agentId, app.name, version) as { id: number } | null;
+
+  if (existing) {
+    db.prepare(
+      "UPDATE applications SET vendor = ?, category = ?, status = ?, advisory_markdown = ? WHERE id = ?"
+    ).run(vendor, category, status, advisoryMarkdown, existing.id);
+    return { id: existing.id, name: app.name, action: "updated" };
+  }
+
+  const row = db.prepare(
+    "INSERT INTO applications (agent_id, name, version, vendor, category, status, advisory_markdown) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id"
+  ).get(agentId, app.name, version, vendor, category, status, advisoryMarkdown) as { id: number };
+
+  return { id: row.id, name: app.name, action: "created" };
+}
+
+/**
+ * Parse a bulk advisory markdown into sections split by `---` dividers.
+ * Each section is matched to applications by checking if the section text
+ * mentions the application name (case-insensitive).
+ */
+function applyBulkAdvisory(text: string): { matched: number; unmatched: number; details: { name: string; id: number }[] } {
+  const apps = db.query("SELECT id, name FROM applications").all() as { id: number; name: string }[];
+
+  // Split into sections by --- dividers
+  const sections = text.split(/\n---+\n/).filter((s) => s.trim());
+
+  const matched: { name: string; id: number }[] = [];
+  const matchedIds = new Set<number>();
+
+  for (const app of apps) {
+    // Collect all sections that mention this app name
+    const appNameLower = app.name.toLowerCase();
+    const relevantSections = sections.filter((section) =>
+      section.toLowerCase().includes(appNameLower)
+    );
+
+    if (relevantSections.length > 0) {
+      const advisory = relevantSections.join("\n\n---\n\n");
+      db.prepare(
+        "UPDATE applications SET advisory_markdown = ? WHERE id = ?"
+      ).run(advisory, app.id);
+      matched.push({ name: app.name, id: app.id });
+      matchedIds.add(app.id);
+    }
+  }
+
+  return {
+    matched: matched.length,
+    unmatched: sections.length - matchedIds.size,
+    details: matched,
+  };
+}
+
+export const webhookApi = new Elysia({ prefix: "/webhook" })
+  // Accept JSON from n8n — handles both single object and array of applications
+  .post("/n8n", ({ body }) => {
+    const payload = body as any;
+
+    // n8n bulk advisory format: { body: { text: "..." } } or { text: "..." }
+    const bulkText = payload?.body?.text ?? payload?.text;
+    if (bulkText && typeof bulkText === "string" && !payload.name) {
+      const result = applyBulkAdvisory(bulkText);
+      return {
+        mode: "bulk_advisory",
+        ...result,
+      };
+    }
+
+    const items: N8nApplication[] = Array.isArray(payload) ? payload : [payload];
+    const results: { id: number; name: string; action: string }[] = [];
+    const errors: { index: number; name?: string; error: string }[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.name) {
+        errors.push({ index: i, error: "Missing required field 'name'" });
+        continue;
+      }
+      try {
+        results.push(upsertApplication(item));
+      } catch (e: any) {
+        errors.push({ index: i, name: item.name, error: e.message });
+      }
+    }
+
+    return {
+      received: items.length,
+      created: results.filter((r) => r.action === "created").length,
+      updated: results.filter((r) => r.action === "updated").length,
+      errors: errors.length,
+      results,
+      ...(errors.length > 0 ? { error_details: errors } : {}),
+    };
+  });

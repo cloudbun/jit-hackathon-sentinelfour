@@ -17,5 +17,14 @@ COPY --from=build /app/dist dist
 COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/package.json .
 
+# Include seed script for optional data initialization
+# Usage: docker exec <container> bun run src/seed-applications.ts
+COPY --from=build /app/src/db.ts src/db.ts
+COPY --from=build /app/src/seed-applications.ts src/seed-applications.ts
+
+# Persist SQLite database across container restarts
+VOLUME /app/data
+ENV DATABASE_PATH=/app/data/data.db
+
 EXPOSE 3000
 CMD ["bun", "dist/server/server.js"]

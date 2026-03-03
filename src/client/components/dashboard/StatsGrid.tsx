@@ -18,7 +18,7 @@ function StatCard({ label, value, color, borderColor }: StatCardProps) {
 
 export function StatsGrid({ summary }: { summary: DashboardSummary }) {
   return (
-    <div className="grid grid-cols-4 gap-4">
+    <div className="grid grid-cols-5 gap-4">
       <StatCard
         label="Healthy Agents"
         value={summary.agents.online}
@@ -36,6 +36,12 @@ export function StatsGrid({ summary }: { summary: DashboardSummary }) {
         value={summary.agents.alert}
         color="text-amber-400"
         borderColor="border-l-amber-500"
+      />
+      <StatCard
+        label="Applications"
+        value={summary.applications.total}
+        color="text-sky-400"
+        borderColor="border-l-sky-500"
       />
       <StatCard
         label="Threat Feeds"

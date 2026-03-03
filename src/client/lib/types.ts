@@ -66,8 +66,32 @@ export interface DashboardSummary {
   };
   threats: { threat_level: string; count: number }[];
   feeds: { total: number };
+  applications: { total: number };
   recentEvents: AgentEvent[];
   recentFeedItems: FeedItem[];
+}
+
+export type ApplicationStatus = "running" | "stopped" | "vulnerable" | "outdated";
+export type ApplicationCategory = "database" | "web-server" | "runtime" | "security" | "other";
+
+export interface Application {
+  id: number;
+  agent_id: number;
+  agent_hostname: string;
+  name: string;
+  version: string;
+  vendor: string;
+  category: ApplicationCategory;
+  status: ApplicationStatus;
+  advisory_markdown: string;
+  created_at: string;
+}
+
+export interface ApplicationSummary {
+  total: number;
+  unique_names: number;
+  by_status: Record<ApplicationStatus, number>;
+  by_category: Record<ApplicationCategory, number>;
 }
 
 export type Page = "dashboard" | "agents" | "feeds";

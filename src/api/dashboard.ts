@@ -13,6 +13,7 @@ export const dashboardApi = new Elysia({ prefix: "/dashboard" })
 
     const totalAgents = db.query("SELECT COUNT(*) as count FROM agents").get() as { count: number };
     const totalFeeds = db.query("SELECT COUNT(*) as count FROM feeds").get() as { count: number };
+    const totalApplications = db.query("SELECT COUNT(*) as count FROM applications").get() as { count: number };
 
     const recentEvents = db.query(`
       SELECT ae.*, a.hostname
@@ -42,6 +43,7 @@ export const dashboardApi = new Elysia({ prefix: "/dashboard" })
       },
       threats: threatBreakdown,
       feeds: { total: totalFeeds.count },
+      applications: { total: totalApplications.count },
       recentEvents,
       recentFeedItems,
     };

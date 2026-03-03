@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 
-export const db = new Database("data.db", { create: true });
+const dbPath = process.env.DATABASE_PATH ?? "data.db";
+export const db = new Database(dbPath, { create: true });
 
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA foreign_keys = ON;");
@@ -38,6 +39,33 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS applications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL DEFAULT '',
+    vendor TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL CHECK(category IN ('database', 'web-server', 'runtime', 'security', 'other')) DEFAULT 'other',
+    status TEXT NOT NULL CHECK(status IN ('running', 'stopped', 'vulnerable', 'outdated')) DEFAULT 'running',
+    advisory_markdown TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(agent_id, name, version)
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_applications_agent_created
+    ON applications(agent_id, created_at DESC);
+`);
+
+// Migration: add advisory_markdown column if it doesn't exist yet
+try {
+  db.exec("ALTER TABLE applications ADD COLUMN advisory_markdown TEXT NOT NULL DEFAULT ''");
+} catch {
+  // Column already exists — ignore
+}
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS feeds (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -64,3 +92,20 @@ db.exec(`
     UNIQUE(feed_id, guid)
   );
 `);
+
+// Seed default threat-intel feeds if none exist
+const feedCount = db.query("SELECT COUNT(*) as count FROM feeds").get() as { count: number };
+if (feedCount.count === 0) {
+  const defaultFeeds: [string, string][] = [
+    ["CISA Advisories",            "https://www.cisa.gov/cybersecurity-advisories/all.xml"],
+    ["CISA ICS Advisories",        "https://www.cisa.gov/cybersecurity-advisories/ics-advisories.xml"],
+    ["AWS Security Bulletins",     "https://aws.amazon.com/security/security-bulletins/rss/feed/"],
+    ["Cisco Security Advisories",  "https://sec.cloudapps.cisco.com/security/center/xmlContent.do?url=/document/blobs/rss/latest_security_advisories.xml"],
+    ["Palo Alto Security Advisories", "https://security.paloaltonetworks.com/rss.xml"],
+  ];
+
+  const insertFeed = db.prepare("INSERT INTO feeds (name, url) VALUES (?, ?)");
+  for (const [name, url] of defaultFeeds) {
+    insertFeed.run(name, url);
+  }
+}

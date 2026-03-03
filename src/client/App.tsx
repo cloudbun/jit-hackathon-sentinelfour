@@ -11,9 +11,13 @@ import { FeedItemsList } from "./components/feeds/FeedItemsList";
 import { AddFeedForm } from "./components/feeds/AddFeedForm";
 import { Card, CardHeader, CardBody } from "./components/shared/Card";
 import { EmptyState } from "./components/shared/EmptyState";
+import { ApplicationsTab } from "./components/applications/ApplicationsTab";
 import type { Agent } from "./lib/types";
 
+type Tab = "dashboard" | "applications";
+
 export function App() {
+  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [severityFilter, setSeverityFilter] = useState("");
 
@@ -80,6 +84,30 @@ export function App() {
         </div>
       </header>
 
+      {/* Tab bar */}
+      <div className="border-b border-zinc-700/60 bg-black/50">
+        <div className="px-4 flex gap-0 ticket-mono">
+          {([["dashboard", "Dashboard"], ["applications", "Applications"]] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`px-5 py-2.5 text-[10px] uppercase tracking-widest transition-colors border-b-2 ${
+                activeTab === key
+                  ? "border-zinc-300 text-zinc-100"
+                  : "border-transparent text-zinc-600 hover:text-zinc-400"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === "applications" ? (
+        <div className="px-4 py-4">
+          <ApplicationsTab />
+        </div>
+      ) : (
       <div className="px-4 py-4">
         <div className="grid grid-cols-12 gap-4">
 
@@ -187,6 +215,8 @@ export function App() {
           </div>
         </div>
       </div>
+
+      )}
 
       {selectedAgent && (
         <AgentDetailModal agentId={selectedAgent.id} onClose={() => setSelectedAgent(null)} />

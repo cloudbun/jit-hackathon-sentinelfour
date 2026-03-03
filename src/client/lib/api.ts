@@ -1,4 +1,4 @@
-import type { Agent, AgentWithEvents, DashboardSummary, Feed, FeedItem } from "./types";
+import type { Agent, AgentWithEvents, Application, ApplicationSummary, DashboardSummary, Feed, FeedItem } from "./types";
 
 const BASE = "/api";
 
@@ -55,6 +55,27 @@ export const getFeedItems = (params?: { limit?: number; offset?: number; severit
   if (params?.severity) qs.set("severity", params.severity);
   return request<FeedItem[]>(`/feeds/items?${qs}`);
 };
+
+// Applications
+export const getApplications = (params?: { status?: string; category?: string; search?: string }) => {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  if (params?.category) qs.set("category", params.category);
+  if (params?.search) qs.set("search", params.search);
+  const q = qs.toString();
+  return request<Application[]>(`/applications${q ? `?${q}` : ""}`);
+};
+
+export const getApplicationSummary = () =>
+  request<ApplicationSummary>("/applications/summary");
+
+export const createApplication = (data: {
+  agent_id: number; name: string; version?: string; vendor?: string; category?: string; status?: string;
+}) =>
+  request<Application>("/applications", { method: "POST", body: JSON.stringify(data) });
+
+export const deleteApplication = (id: number) =>
+  request<{ ok: boolean }>(`/applications/${id}`, { method: "DELETE" });
 
 // Dashboard
 export const getDashboardSummary = () =>
