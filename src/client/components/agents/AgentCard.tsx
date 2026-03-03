@@ -81,7 +81,7 @@ function TriageBreadcrumb({ threatLevel }: { threatLevel: ThreatLevel }) {
   return (
     <div className="border-t border-dotted border-amber-500/20 px-4 py-2.5 bg-amber-950/10">
       <p className="text-[8px] uppercase tracking-[3px] text-amber-500/60 mb-2">Auto-Triage</p>
-      <div className="flex items-center gap-0">
+      <div className="flex flex-wrap items-center gap-y-1.5">
         {steps.map((step, i) => (
           <div key={step.label} className="flex items-center">
             {/* Step */}

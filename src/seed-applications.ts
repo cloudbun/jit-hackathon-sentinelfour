@@ -18,12 +18,77 @@ const insertAgent = db.prepare(
 const agentIds: Record<string, number> = {};
 
 for (const a of agents) {
-  const status = a.hostname === "fw-edge" ? "online" : a.hostname === "db-replica" ? "offline" : "online";
-  const threat = a.hostname === "web-02" ? "medium" : "none";
+  const status = a.hostname === "web-02" ? "alert" : a.hostname === "db-replica" ? "offline" : "online";
+  const threat = a.hostname === "web-02" ? "high" : a.hostname === "dev-ws-01" ? "medium" : "none";
   insertAgent.run(a.hostname, a.ip_address, a.os, a.agent_type, status, threat);
   const row = db.query("SELECT id FROM agents WHERE hostname = ?").get(a.hostname) as { id: number };
   agentIds[a.hostname] = row.id;
 }
+
+// Set last_heartbeat for online agents
+const now = new Date();
+for (const a of agents) {
+  if (a.hostname === "db-replica") continue; // offline, no heartbeat
+  const ago = a.hostname === "web-02" ? 180_000 : Math.floor(Math.random() * 60_000); // web-02 heartbeat 3m ago
+  const hb = new Date(now.getTime() - ago).toISOString().replace("T", " ").slice(0, 19);
+  db.prepare("UPDATE agents SET last_heartbeat = ? WHERE id = ?").run(hb, agentIds[a.hostname]);
+}
+
+// Seed agent events
+const insertEvent = db.prepare(
+  "INSERT INTO agent_events (agent_id, event_type, severity, message, created_at) VALUES (?, ?, ?, ?, ?)"
+);
+
+function minutesAgo(m: number): string {
+  return new Date(now.getTime() - m * 60_000).toISOString().replace("T", " ").slice(0, 19);
+}
+
+const events: { agent: string; type: string; severity: string; message: string; minutesAgo: number }[] = [
+  // web-02 alert chain — ModSecurity WAF bypass detected
+  { agent: "web-02", type: "threat_detected", severity: "critical", message: "WAF bypass attempt detected — ModSecurity CVE-2024-1019 exploit pattern matched on /api/admin", minutesAgo: 3 },
+  { agent: "web-02", type: "alert",           severity: "high",     message: "Suspicious POST payload bypassed ModSecurity rules, request forwarded to origin", minutesAgo: 3 },
+  { agent: "web-02", type: "threat_detected", severity: "high",     message: "Anomalous outbound connection to 45.33.32.156:8443 from Apache worker pid 2847", minutesAgo: 2 },
+  { agent: "web-02", type: "status_change",   severity: "high",     message: "Agent status changed: online → alert (auto-triage initiated)", minutesAgo: 2 },
+  { agent: "web-02", type: "alert",           severity: "critical", message: "PHP deserialization payload detected in POST body — potential RCE via outdated PHP 8.1.27", minutesAgo: 1 },
+
+  // fw-edge — blocked traffic
+  { agent: "fw-edge", type: "alert",           severity: "medium",   message: "Suricata IDS: 47 blocked inbound scan attempts from 192.168.1.0/24 in last 5 min", minutesAgo: 8 },
+  { agent: "fw-edge", type: "threat_detected", severity: "medium",   message: "Snort alert SID:1-42340 — potential SQL injection in HTTP query string", minutesAgo: 15 },
+  { agent: "fw-edge", type: "heartbeat",       severity: "info",     message: "Firewall health check: 12,847 rules active, 99.2% packet inspection rate", minutesAgo: 1 },
+
+  // dev-ws-01 — ClamAV vulnerability
+  { agent: "dev-ws-01", type: "threat_detected", severity: "high",   message: "ClamAV 1.3.0 vulnerable to CVE-2024-20328 (command injection) — update required", minutesAgo: 45 },
+  { agent: "dev-ws-01", type: "alert",           severity: "medium", message: "Potentially malicious file quarantined: /tmp/.cache/x86_dropper.bin (Trojan.Generic)", minutesAgo: 30 },
+
+  // db-master — normal operations
+  { agent: "db-master", type: "heartbeat", severity: "info",   message: "PostgreSQL 16.2 healthy — 142 active connections, replication lag 0ms", minutesAgo: 1 },
+  { agent: "db-master", type: "alert",     severity: "low",    message: "pg_stat_monitor: query runtime exceeded 5s threshold on 3 queries in last hour", minutesAgo: 20 },
+
+  // db-replica — offline events
+  { agent: "db-replica", type: "status_change", severity: "medium", message: "Agent status changed: online → offline (heartbeat timeout 120s exceeded)", minutesAgo: 60 },
+  { agent: "db-replica", type: "alert",         severity: "medium", message: "Replication stream disconnected — standby is 247 WAL segments behind", minutesAgo: 58 },
+
+  // ci-runner — routine
+  { agent: "ci-runner", type: "heartbeat",       severity: "info", message: "Docker Engine healthy — 8 containers running, 2.1GB memory used", minutesAgo: 1 },
+  { agent: "ci-runner", type: "alert",           severity: "low",  message: "Trivy scan: 3 new CVEs found in node:20-slim base image (2 medium, 1 low)", minutesAgo: 12 },
+  { agent: "ci-runner", type: "threat_detected", severity: "medium", message: "Container escape attempt blocked by seccomp profile on build-runner-7", minutesAgo: 90 },
+
+  // web-01 — healthy heartbeats
+  { agent: "web-01", type: "heartbeat", severity: "info", message: "nginx 1.25.4 serving 1,247 req/s — all upstreams healthy", minutesAgo: 1 },
+  { agent: "web-01", type: "heartbeat", severity: "info", message: "Node.js PM2: 4/4 processes online, avg response time 23ms", minutesAgo: 2 },
+  { agent: "web-01", type: "alert",     severity: "low",  message: "Fail2Ban: banned 12 IPs in last hour (SSH brute force)", minutesAgo: 5 },
+
+  // cache-01 — normal
+  { agent: "cache-01", type: "heartbeat", severity: "info",   message: "Redis 7.2.4 cluster healthy — 98.7% hit rate, 1.2GB memory used", minutesAgo: 1 },
+  { agent: "cache-01", type: "alert",     severity: "low",    message: "Memcached: eviction rate elevated (142/min), consider increasing max memory", minutesAgo: 35 },
+];
+
+for (const e of events) {
+  const aid = agentIds[e.agent];
+  if (!aid) continue;
+  insertEvent.run(aid, e.type, e.severity, e.message, minutesAgo(e.minutesAgo));
+}
+console.log(`Seeded ${events.length} events`);
 
 const apps: { agent: string; name: string; version: string; vendor: string; category: string; status: string; advisory_markdown?: string }[] = [
   // web-01

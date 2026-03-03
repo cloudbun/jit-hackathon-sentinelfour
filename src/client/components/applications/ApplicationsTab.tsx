@@ -51,6 +51,37 @@ function Badge({ label, colors }: { label: string; colors: { text: string; bg: s
   );
 }
 
+type AdvisorySeverity = "critical" | "high" | "medium" | "low" | "info";
+
+const severityRank: Record<AdvisorySeverity, number> = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
+
+const severityBadgeColors: Record<AdvisorySeverity, { text: string; bg: string; border: string }> = {
+  critical: { text: "text-red-300",    bg: "bg-red-500/20",    border: "border-red-500/50" },
+  high:     { text: "text-orange-300", bg: "bg-orange-500/20", border: "border-orange-500/50" },
+  medium:   { text: "text-amber-300",  bg: "bg-amber-500/20",  border: "border-amber-500/50" },
+  low:      { text: "text-blue-300",   bg: "bg-blue-500/20",   border: "border-blue-500/50" },
+  info:     { text: "text-zinc-400",   bg: "bg-zinc-500/20",   border: "border-zinc-500/50" },
+};
+
+function getAdvisoryStats(md: string): { cveCount: number; severity: AdvisorySeverity } {
+  // Count CVE references
+  const cves = md.match(/CVE-\d{4}-\d+/gi);
+  const cveCount = cves ? new Set(cves.map(c => c.toUpperCase())).size : 0;
+
+  // Determine max severity from content
+  const lower = md.toLowerCase();
+  let severity: AdvisorySeverity = "info";
+  if (/critical|cvss\s*(9|10)\b/i.test(lower)) severity = "critical";
+  else if (/\bhigh\b|cvss\s*(7|8)\b/i.test(lower)) severity = "high";
+  else if (/\bmedium\b|cvss\s*(4|5|6)\b/i.test(lower)) severity = "medium";
+  else if (/\blow\b/i.test(lower)) severity = "low";
+
+  // If no CVEs found but advisory exists, count sections as issues
+  const count = cveCount || md.split(/\n---+\n/).filter(s => s.trim()).length - 1 || 1;
+
+  return { cveCount: count, severity };
+}
+
 function parseAdvisoryMarkdown(md: string) {
   const elements: React.ReactNode[] = [];
   const lines = md.split("\n");
@@ -234,6 +265,8 @@ export function ApplicationsTab() {
                 {appsApi.data.map((app) => {
                   const hasAdvisory = !!app.advisory_markdown;
                   const isExpanded = expandedRows.has(app.id);
+                  const stats = hasAdvisory ? getAdvisoryStats(app.advisory_markdown) : null;
+                  const badgeColors = stats ? severityBadgeColors[stats.severity] : null;
                   return (
                     <div key={app.id}>
                       <div
@@ -243,7 +276,14 @@ export function ApplicationsTab() {
                         <span className="w-4 flex items-center justify-center">
                           {hasAdvisory && <ChevronIcon expanded={isExpanded} />}
                         </span>
-                        <span className="text-xs text-zinc-200 truncate">{app.name}</span>
+                        <span className="text-xs text-zinc-200 truncate flex items-center gap-2">
+                          {app.name}
+                          {stats && badgeColors && (
+                            <span className={`inline-flex items-center gap-1 border ${badgeColors.border} ${badgeColors.bg} ${badgeColors.text} px-1.5 py-0 text-[9px] font-bold uppercase tracking-wide ticket-mono rounded-sm`}>
+                              {stats.cveCount} CVE{stats.cveCount !== 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </span>
                         <span className="text-xs text-zinc-400 truncate">{app.version || "—"}</span>
                         <span className="text-xs text-zinc-400 truncate">{app.vendor || "—"}</span>
                         <Badge label={app.category} colors={categoryColors[app.category] ?? categoryColors.other} />
