@@ -67,14 +67,7 @@ function getTriageActions(threatLevel: ThreatLevel, hostname: string): TriageAct
 function TriageActionsPanel({ threatLevel, hostname }: { threatLevel: ThreatLevel; hostname: string }) {
   const [actions, setActions] = useState<TriageAction[]>(() => getTriageActions(threatLevel, hostname));
 
-  const handleExecute = (id: string) => {
-    setActions(prev => prev.map(a => {
-      if (a.id === id && a.status === "pending") {
-        return { ...a, status: "running" as const };
-      }
-      return a;
-    }));
-    // Simulate completion after delay
+  const completeAction = (id: string, delay: number) => {
     setTimeout(() => {
       setActions(prev => prev.map(a => {
         if (a.id === id && a.status === "running") {
@@ -82,17 +75,34 @@ function TriageActionsPanel({ threatLevel, hostname }: { threatLevel: ThreatLeve
         }
         return a;
       }));
-    }, 1500 + Math.random() * 1500);
+    }, delay);
+  };
+
+  const handleExecute = (id: string) => {
+    setActions(prev => prev.map(a => {
+      if (a.id === id && a.status === "pending") {
+        return { ...a, status: "running" as const };
+      }
+      return a;
+    }));
+    completeAction(id, 1500 + Math.random() * 1500);
+  };
+
+  const handleRunRunning = (id: string) => {
+    completeAction(id, 1000 + Math.random() * 1000);
   };
 
   const handleExecuteAll = () => {
+    const running = actions.filter(a => a.status === "running");
+    running.forEach((a) => handleRunRunning(a.id));
     const pending = actions.filter(a => a.status === "pending");
+    const offset = running.length > 0 ? 1 : 0;
     pending.forEach((a, i) => {
-      setTimeout(() => handleExecute(a.id), i * 800);
+      setTimeout(() => handleExecute(a.id), (i + offset) * 800);
     });
   };
 
-  const pendingCount = actions.filter(a => a.status === "pending").length;
+  const actionableCount = actions.filter(a => a.status === "pending" || a.status === "running").length;
   const completeCount = actions.filter(a => a.status === "complete").length;
 
   return (
@@ -102,12 +112,12 @@ function TriageActionsPanel({ threatLevel, hostname }: { threatLevel: ThreatLeve
           Triage Actions
           <span className="text-zinc-600 ml-2">{completeCount}/{actions.length} complete</span>
         </h3>
-        {pendingCount > 0 && (
+        {actionableCount > 0 && (
           <button
             onClick={handleExecuteAll}
             className="ticket-mono text-[9px] uppercase tracking-wide px-2.5 py-1 border border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors"
           >
-            Execute All ({pendingCount})
+            Execute All ({actionableCount})
           </button>
         )}
       </div>
@@ -143,9 +153,12 @@ function TriageActionsPanel({ threatLevel, hostname }: { threatLevel: ThreatLeve
                 </button>
               )}
               {action.status === "running" && (
-                <span className="ticket-mono text-[9px] uppercase tracking-wide text-amber-400 status-blink shrink-0 mt-1 px-2">
-                  Running...
-                </span>
+                <button
+                  onClick={() => handleRunRunning(action.id)}
+                  className="ticket-mono text-[9px] uppercase tracking-wide px-2 py-1 border border-amber-500/40 text-amber-400 hover:bg-amber-500/20 status-blink transition-colors shrink-0 mt-0.5"
+                >
+                  Complete
+                </button>
               )}
             </div>
           );
