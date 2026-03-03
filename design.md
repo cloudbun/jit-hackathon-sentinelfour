@@ -77,7 +77,7 @@ All prefixed with `/api`.
 
 ## Seed Data
 
-8 pre-seeded agents (web servers, databases, cache, firewall, CI runner, dev workstation) with ~45 applications across them. Every alert and vulnerability has a clear remediation path through the API.
+10 pre-seeded agents (web servers, databases, cache, firewall, CI runner, dev workstation, log collector, VPN gateway) with ~54 applications across them. Every alert and vulnerability has a clear remediation path through the API.
 
 ### Incident Resolution Playbook
 
@@ -92,6 +92,10 @@ All prefixed with `/api`.
 | Snort 2.9.20 EOL | fw-edge | `PUT /applications/:id { version: "3.1.77.0", status: "running", advisory_markdown: "" }` |
 | ClamAV 1.3.0 vulnerable | dev-ws-01 | `PUT /applications/:id { version: "1.3.1", status: "running", advisory_markdown: "" }` |
 | Elevated threat level | dev-ws-01 | `PUT /agents/:id { threat_level: "none" }` |
+| Agent offline (disk full) | log-collector | `POST /agents/:id/heartbeat` |
+| regreSSHion RCE / brute-force | vpn-gateway | `PUT /agents/:id { status: "online", threat_level: "none" }` |
+| OpenSSH 9.6p1 vulnerable | vpn-gateway | `PUT /applications/:id { version: "9.8p2", status: "running", advisory_markdown: "" }` |
+| OpenVPN 2.5.9 EOL | vpn-gateway | `PUT /applications/:id { version: "2.6.12", status: "running", advisory_markdown: "" }` |
 
 ## Deployment
 

@@ -9,6 +9,8 @@ const agents = [
   { hostname: "fw-edge",   ip_address: "10.0.0.1",  os: "pfSense 2.7",         agent_type: "firewall" },
   { hostname: "ci-runner", ip_address: "10.0.4.10", os: "Ubuntu 24.04 LTS",     agent_type: "server" },
   { hostname: "dev-ws-01", ip_address: "10.0.5.10", os: "macOS 15.3",           agent_type: "workstation" },
+  { hostname: "log-collector", ip_address: "10.0.6.10", os: "Ubuntu 22.04 LTS", agent_type: "server" },
+  { hostname: "vpn-gateway",   ip_address: "10.0.0.5",  os: "Ubuntu 24.04 LTS", agent_type: "server" },
 ] as const;
 
 const insertAgent = db.prepare(
@@ -18,8 +20,15 @@ const insertAgent = db.prepare(
 const agentIds: Record<string, number> = {};
 
 for (const a of agents) {
-  const status = a.hostname === "web-02" ? "alert" : a.hostname === "db-replica" ? "offline" : "online";
-  const threat = a.hostname === "web-02" ? "high" : a.hostname === "dev-ws-01" ? "medium" : "none";
+  const status = a.hostname === "web-02" ? "alert"
+    : a.hostname === "db-replica" ? "offline"
+    : a.hostname === "log-collector" ? "offline"
+    : a.hostname === "vpn-gateway" ? "alert"
+    : "online";
+  const threat = a.hostname === "web-02" ? "high"
+    : a.hostname === "dev-ws-01" ? "medium"
+    : a.hostname === "vpn-gateway" ? "critical"
+    : "none";
   insertAgent.run(a.hostname, a.ip_address, a.os, a.agent_type, status, threat);
   const row = db.query("SELECT id FROM agents WHERE hostname = ?").get(a.hostname) as { id: number };
   agentIds[a.hostname] = row.id;
@@ -28,8 +37,8 @@ for (const a of agents) {
 // Set last_heartbeat for online agents
 const now = new Date();
 for (const a of agents) {
-  if (a.hostname === "db-replica") continue; // offline, no heartbeat
-  const ago = a.hostname === "web-02" ? 180_000 : Math.floor(Math.random() * 60_000); // web-02 heartbeat 3m ago
+  if (a.hostname === "db-replica" || a.hostname === "log-collector") continue; // offline, no heartbeat
+  const ago = a.hostname === "web-02" ? 180_000 : a.hostname === "vpn-gateway" ? 120_000 : Math.floor(Math.random() * 60_000);
   const hb = new Date(now.getTime() - ago).toISOString().replace("T", " ").slice(0, 19);
   db.prepare("UPDATE agents SET last_heartbeat = ? WHERE id = ?").run(hb, agentIds[a.hostname]);
 }
@@ -91,6 +100,20 @@ const events: { agent: string; type: string; severity: string; message: string; 
   // ── cache-01 — normal ──
   { agent: "cache-01", type: "heartbeat", severity: "info",   message: "Redis 7.2.4 cluster healthy — 98.7% hit rate, 1.2GB memory used", minutesAgo: 1 },
   { agent: "cache-01", type: "alert",     severity: "low",    message: "Memcached: eviction rate elevated (142/min), consider increasing max memory", minutesAgo: 35 },
+
+  // ── log-collector — offline (no fix needed, just an example of offline state) ──
+  { agent: "log-collector", type: "heartbeat",     severity: "info",   message: "Fluentd pipeline healthy — 24,300 events/s ingested across 12 inputs", minutesAgo: 125 },
+  { agent: "log-collector", type: "status_change", severity: "medium", message: "Agent status changed: online → offline (heartbeat timeout 120s exceeded)", minutesAgo: 120 },
+  { agent: "log-collector", type: "alert",         severity: "high",   message: "Disk usage critical: /var/log at 97% — log rotation may have stalled", minutesAgo: 122 },
+
+  // ── vpn-gateway — alert with critical threat, fully fixable ──
+  // Resolution: PUT /agents/:id { status: "online", threat_level: "none" }
+  //             PUT /applications/:id { version: "9.8p2", status: "running", advisory_markdown: "" } (OpenSSH)
+  //             PUT /applications/:id { version: "2.6.12", status: "running", advisory_markdown: "" } (OpenVPN)
+  { agent: "vpn-gateway", type: "threat_detected", severity: "critical", message: "OpenSSH CVE-2024-6387 (regreSSHion) — unauthenticated RCE exploit attempt detected from 203.0.113.42", minutesAgo: 5 },
+  { agent: "vpn-gateway", type: "alert",           severity: "critical", message: "Brute-force SSH login attempts: 847 failed attempts from 6 unique IPs in last 10 min", minutesAgo: 4 },
+  { agent: "vpn-gateway", type: "status_change",   severity: "critical", message: "Agent status changed: online → alert (auto-triage initiated)", minutesAgo: 4 },
+  { agent: "vpn-gateway", type: "threat_detected", severity: "high",     message: "OpenVPN TLS handshake anomaly — potential downgrade attack on tun0 interface", minutesAgo: 2 },
 ];
 
 for (const e of events) {
@@ -161,6 +184,24 @@ const apps: { agent: string; name: string; version: string; vendor: string; cate
   { agent: "ci-runner", name: "Go",              version: "1.22.0",   vendor: "Google",               category: "runtime",    status: "running" },
   { agent: "ci-runner", name: "Python",          version: "3.11.8",   vendor: "PSF",                  category: "runtime",    status: "running" },
   { agent: "ci-runner", name: "Trivy",           version: "0.49.1",   vendor: "Aqua Security",        category: "security",   status: "running" },
+
+  // log-collector — offline, apps were healthy before disconnect
+  { agent: "log-collector", name: "Fluentd",          version: "1.16.3",  vendor: "Fluentd Project",      category: "other",      status: "running" },
+  { agent: "log-collector", name: "Elasticsearch",    version: "8.12.2",  vendor: "Elastic",              category: "database",   status: "running" },
+  { agent: "log-collector", name: "Kibana",           version: "8.12.2",  vendor: "Elastic",              category: "web-server", status: "running" },
+  { agent: "log-collector", name: "OpenSSL",          version: "3.0.13",  vendor: "OpenSSL Project",      category: "security",   status: "running" },
+
+  // vpn-gateway — OpenSSH vulnerable + OpenVPN outdated, fully fixable
+  // Fix: PUT /agents/:id { status: "online", threat_level: "none" }
+  //      PUT /applications/:id { version: "9.8p2", status: "running", advisory_markdown: "" } (OpenSSH)
+  //      PUT /applications/:id { version: "2.6.12", status: "running", advisory_markdown: "" } (OpenVPN)
+  { agent: "vpn-gateway", name: "OpenSSH",            version: "9.6p1",   vendor: "OpenBSD",              category: "security",   status: "vulnerable",
+    advisory_markdown: `### CVE-2024-6387 — regreSSHion: Unauthenticated RCE in OpenSSH\n**Severity:** Critical (CVSS 8.1) — active exploitation in the wild\n**Impacted:** OpenSSH 8.5p1 through 9.7p1\n**Fix:** Upgrade to OpenSSH 9.8p2+\n\n---\n\n### CVE-2024-6409 — Race Condition in Signal Handling\n**Severity:** High (CVSS 7.0)\n**Impacted:** OpenSSH 8.7p1 through 9.7p1\n**Fix:** Upgrade to OpenSSH 9.8p2+` },
+  { agent: "vpn-gateway", name: "OpenVPN",            version: "2.5.9",   vendor: "OpenVPN Inc",          category: "security",   status: "outdated",
+    advisory_markdown: `### OpenVPN 2.5.x End-of-Life\n**Severity:** High — 2.5.x branch no longer receives security patches\n**Impacted:** OpenVPN 2.5.x (all versions)\n**Fix:** Upgrade to OpenVPN 2.6.12+` },
+  { agent: "vpn-gateway", name: "WireGuard",          version: "1.0.20210914", vendor: "WireGuard",        category: "security",   status: "running" },
+  { agent: "vpn-gateway", name: "iptables",           version: "1.8.10",  vendor: "netfilter",            category: "security",   status: "running" },
+  { agent: "vpn-gateway", name: "StrongSwan",         version: "5.9.14",  vendor: "strongSwan Project",   category: "security",   status: "running" },
 
   // dev-ws-01 — ClamAV vulnerable, rest healthy
   // Fix: PUT /agents/:id { threat_level: "none" }
